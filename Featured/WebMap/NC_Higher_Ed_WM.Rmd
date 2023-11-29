@@ -1,0 +1,199 @@
+---
+title: "rmd for webmap"
+output: html_document
+date: '2022-12-17'
+---
+```{r}
+library(tidyverse)
+library(leaflet)
+library(leaflet.extras)
+library(stringr)
+library(htmlwidgets)
+library(data.table)
+```
+
+
+```{r}
+nc_colleges <- read.csv("data/Colleges_and_Universities.csv")
+```
+
+```{r}
+mutate_col <- nc_colleges %>% 
+  mutate("longitude" = x, "latitude" = y) %>%
+  mutate(naicsdescr = case_when(naicsdescr == "COLLEGES (EXCEPT JUNIOR COLLEGES)"~"COLLEGES",
+                                naicsdescr == "FINE ARTS SCHOOLS (EXCEPT ACADEMIC)"~"FINE ARTS SCHOOLS", 
+                                naicsdescr == "THEOLOGICAL SEMINARIES OFFERING BACCALAUREATE OR GRADUATE DEGREES"~"THEOLOGICAL SEMINARIES",
+                                naicsdescr == "COMMUNITY COLLEGES"~"COMMUNITY COLLEGES", naicsdescr == "CULINARY ARTS SCHOOLS"~"CULINARY ARTS SCHOOLS", 
+                                naicsdescr == "TECHNICAL AND TRADE SCHOOLS"~"TECHNICAL / TRADE SCHOOLS", 
+                                naicsdescr == "UNIVERSITIES"~"UNIVERSITIES")) %>%
+  mutate(naicsdescr = as.factor(naicsdescr)) %>%
+  select(name, longitude, latitude, city, county, naicsdescr, naicscode, geolinkid)
+```
+
+```{r}
+pal <- colorFactor(palette = c("#e41a1c","#4daf4a", "#377eb8",
+                               "#984ea3", "#ff7f00", "#ffff33", 
+                               "#f781bf"),
+                   levels = c("COLLEGES","COMMUNITY COLLEGES","CULINARY ARTS SCHOOLS",
+                              "FINE ARTS SCHOOLS", "TECHNICAL / TRADE SCHOOLS", 
+                              "THEOLOGICAL SEMINARIES", "UNIVERSITIES"))
+                   
+```
+
+```{r}
+college <- mutate_col %>%
+  filter(naicsdescr == "COLLEGES")
+
+community_college <- mutate_col %>%
+  filter(naicsdescr == "COMMUNITY COLLEGES")
+
+university <- mutate_col %>%
+  filter(naicsdescr == "UNIVERSITIES")
+
+culinary <- mutate_col %>%
+  filter(naicsdescr == "CULINARY ARTS SCHOOLS")
+
+fine_arts <- mutate_col %>%
+  filter(naicsdescr == "FINE ARTS SCHOOLS")
+
+tech_trade <- mutate_col %>%
+  filter(naicsdescr == "TECHNICAL / TRADE SCHOOLS")
+
+seminaries <- mutate_col %>%
+  filter(naicsdescr == "THEOLOGICAL SEMINARIES")
+```
+
+```{r}
+nc_map_html_2 <- leaflet() %>%
+  addProviderTiles(provider = "CartoDB.DarkMatter", group = "CartoDB.DarkMatter") %>%
+  addTiles(group = "OSM") %>%
+  addProviderTiles("Esri", group = "Esri") %>%
+  addProviderTiles(provider = "Esri.WorldPhysical", group = "Esri.WorldPhysical") %>% 
+  # College's
+  addCircleMarkers(data = college, 
+                   radius = 3, 
+                   opacity = .75, 
+                   color = ~pal(naicsdescr), 
+                   popup = paste("", college$name, "<br>",
+                                 "Type:", college$naicsdescr, "<br>", 
+                                 "County:", college$county, "<br>",
+                                 "lat:", college$latitude, "<br>",
+                                 "long:", college$longitude), 
+                   label = ~name,
+                   group = "COLLEGES") %>%
+  
+  # Community College's
+  addCircleMarkers(data = community_college,
+                   radius = 3,
+                   opacity = .75,
+                   color = ~pal(naicsdescr),
+                   popup = paste("", community_college$name, "<br>",
+                                 "Type:", community_college$naicsdescr, "<br>",
+                                 "County:", community_college$county, "<br>",
+                                 "lat:", community_college$latitude, "<br>",
+                                 "long:", community_college$longitude),
+                   label = ~name,
+                   group = "COMMUNITY COLLEGES") %>%
+  
+  # University's
+  addCircleMarkers(data = university,
+                   radius = 3,
+                   opacity = .75,
+                   color = ~pal(naicsdescr),
+                   popup = paste("", university$name, "<br>",
+                                 "Type:", university$naicsdescr, "<br>",
+                                 "County:", university$county, "<br>",
+                                 "lat:", university$latitude, "<br>",
+                                 "long:", university$longitude),
+                   label = ~name,
+                   group = "UNIVERSITIES") %>%
+   
+  # Culinary Art's Schools
+  addCircleMarkers(data = culinary,
+                   radius = 3,
+                   opacity = .75,
+                   color = ~pal(naicsdescr),
+                   popup = paste("", culinary$name, "<br>",
+                                 "Type:", culinary$naicsdescr, "<br>",
+                                 "County:", culinary$county, "<br>",
+                                 "lat:", culinary$latitude, "<br>",
+                                 "long:", culinary$longitude),
+                   label = ~name,
+                   group = "CULINARY ARTS SCHOOLS") %>%
+  
+  # Fine Arts Schools
+  addCircleMarkers(data = fine_arts,
+                   radius = 3,
+                   opacity = .75,
+                   color = ~pal(naicsdescr),
+                   popup = paste("", fine_arts$name, "<br>",
+                                 "Type:", fine_arts$naicsdescr, "<br>",
+                                 "County:", fine_arts$county, "<br>",
+                                 "lat:", fine_arts$latitude, "<br>",
+                                 "long:", fine_arts$longitude),
+                   label = ~name,
+                   group = "FINE ARTS SCHOOLS") %>%
+  
+  # Trade/ Technical Schools
+  addCircleMarkers(data = tech_trade,
+                   radius = 3,
+                   opacity = .75,
+                   color = ~pal(naicsdescr),
+                   popup = paste("", tech_trade$name, "<br>",
+                                 "Type:", tech_trade$naicsdescr, "<br>",
+                                 "County:", tech_trade$county, "<br>",
+                                 "lat:", tech_trade$latitude, "<br>",
+                                 "long:", tech_trade$longitude),
+                   label = ~name,
+                   group = "TECHNICAL / TRADE SCHOOLS") %>%
+
+   
+  # Seminaries
+  addCircleMarkers(data = seminaries,
+                   radius = 3,
+                   opacity = .75,
+                   color = ~pal(naicsdescr),
+                   popup = paste("", seminaries$name, "<br>",
+                                 "Type:", seminaries$naicsdescr, "<br>",
+                                 "County:", seminaries$county, "<br>",
+                                 "lat:", seminaries$latitude, "<br>",
+                                 "long:", seminaries$longitude),
+                   label = ~name,
+                   group = "THEOLOGICAL SEMINARIES") %>%
+  
+  # Adding Legend
+  addLegend(position = "topright", 
+            pal = pal, 
+            values = c("COLLEGES",
+                                     "COMMUNITY COLLEGES",
+                                     "CULINARY ARTS SCHOOLS",
+                                     "FINE ARTS SCHOOLS",
+                                     "TECHNICAL / TRADE SCHOOLS",
+                                     "THEOLOGICAL SEMINARIES",
+                                      "UNIVERSITIES")) %>%
+
+  # Adding Interactive LayersControl for each: university/institution type, and basegroups i.e., base maps loaded in our provider tiles
+  addLayersControl(overlayGroups = c("COLLEGES",
+                                     "COMMUNITY COLLEGES",
+                                     "CULINARY ARTS SCHOOLS",
+                                     "FINE ARTS SCHOOLS",
+                                     "TECHNICAL / TRADE SCHOOLS",
+                                     "THEOLOGICAL SEMINARIES",
+                                      "UNIVERSITIES" ), 
+                   
+                   baseGroups = c("CartoDB.DarkMatter",
+                                  "OSM", 
+                                  "Esri",
+                                  "Esri.WorldPhysical"), 
+                   position = "topright") 
+  
+                                                          
+                                                         
+                                                         
+                                                   
+nc_map_html_2
+saveWidget(nc_map_html_2, file = "nc_map_final.html")
+```
+
+
+
