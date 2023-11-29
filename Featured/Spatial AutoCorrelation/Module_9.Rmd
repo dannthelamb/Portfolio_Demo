@@ -1,0 +1,494 @@
+---
+title: "Module_9"
+author: "Dan Miller"
+date: "2023-11-04"
+output: html_document
+---
+
+
+```{r}
+library(sf)
+library(spdep)
+NC <- read_sf("NC_REGION/NC_REGION.shp")
+```
+
+```{r}
+#st_crs("EPSG:26917")
+#class(st_crs("EPSG:26917"))
+```
+
+```{r}
+library(tmap)
+# The 'crs' argument works best when we give it an object of class 'crs', such
+# as what's given by the st_crs() function
+NC_UTM <- st_transform(NC, crs = st_crs("EPSG:26917"))
+
+```
+
+
+### Spatial Autocorrelation
+
+```{r}
+queen_nb <- poly2nb(NC_UTM, queen = TRUE)
+NC_centroids <- st_centroid(NC_UTM)
+## Warning in st_centroid.sf(NC_UTM): st_centroid assumes attributes are constant over
+## geometries of x
+
+nc_coords <- NC_centroids$geometry
+
+nb_lines <- nb2lines(nb = queen_nb,
+                     coords = nc_coords)
+
+
+queens_case_plot <- tm_shape(NC_UTM) +
+  tm_borders() +
+tm_shape(nb_lines) + 
+  tm_lines() +
+tm_shape(NC_centroids) + 
+  tm_dots(size = 0.125)
+
+#queens_case_plot
+```
+
+
+### Creating wij weight matrix from queens case spatial object
+
+```{r}
+queen_nb_w <- nb2listw(
+neighbours = queen_nb,
+  # The default style, "W", tells us that we're performing row standardization
+style = "W",
+# Don't worry about this option for now, but it'll be important to include # later.
+zero.policy = TRUE,
+)
+#summary(queen_nb_w)
+```
+
+### Morans's Test
+
+```{r}
+queen <- moran.test(
+  x = NC_UTM$MNEM2000,
+  listw = queen_nb_w,
+  zero.policy = TRUE,
+  alternative = "two.sided"
+)
+queen$estimate[1]
+```
+
+
+# Question 1 
+**1. Calculate Moran’s I for the following variables in the dataset. List the Moran’s I values and p-values for each variable in a single summary table: • MNEM2000 • MNEM1990 • TOTJOB2000 • TOTJOB1990**
+
+
+```{r}
+dans_moran_queen <- function(x, variable) {
+ value <- moran.test(
+  x = x,
+  listw = queen_nb_w,
+  zero.policy = TRUE,
+  alternative = "two.sided"
+)
+ p.value <- value$p.value
+ Morans_I_Stat <- value$estimate[1]
+ title <- paste(variable)
+ combined <- list(title,value, p.value, Morans_I_Stat)
+  return(combined)
+}
+
+
+test_variables <- list(NC_UTM$MNEM2000, NC_UTM$MNEM1990, NC_UTM$TOTJOB2000, NC_UTM$TOTJOB1990)
+names_v <-  list( "MNEM2000", "MNEM1990", "TOTJOB2000", "TOTJOB1990")
+stuff <-mapply(dans_moran_queen, x = test_variables, variable = names_v, SIMPLIFY = FALSE)
+
+
+
+p_values <- sapply(stuff, function(result) result[[3]])
+Morans_I <- sapply(stuff, function(result) result[[4]])
+
+# Create a data frame
+result_df <- data.frame(variable = c("MNEM2000", "MNEM1990", "TOTJOB2000", "TOTJOB1990"), p.value = p_values, Morans_I = Morans_I)
+
+summary_table <- data.frame(t(result_df))
+result_df
+summary_table
+
+```
+
+### Spatial Weights Matrix
+
+```{r}
+rook_nb_w <- NC_UTM %>%
+tibble::column_to_rownames("NAME") %>%
+  st_as_sf() %>%
+  poly2nb(queen = F) %>%
+  nb2listw(
+style = "W",
+    zero.policy = TRUE
+  )
+
+
+moran.test(
+  x = NC_UTM$MNEM2000,
+  listw = rook_nb_w,
+  zero.policy = T,
+  alternative = "two.sided"
+)
+
+```
+
+# Question 2
+**Calculate Moran’s I for the MNEM2000 variable using four different versions of 𝑊𝑖𝑗:**
+• Queen’s Case \n
+• Rook’s Case \n
+• 𝑘 = 4 nearest neighbors \n
+• Maximum Distance (100% threshold) \n
+
+Make sure your weights matrices are row standardized. Provide a table that summarized the calculated I, 𝑝-values, and average number of connections per county. Discuss any systematic changes you observe in I, 𝑝-values, and average links.
+
+
+**Bringing in code from previous module:** so that we have the `NC_knn1` object which I've tweak to call `NC_knn4`, and the subsequent `NC_dnn` object.
+
+```{r}
+
+############# knn, k = 4
+# We'll use the county name as the row names. Unlike in poly2nb, the
+row.names
+# argument actually seems to work :)
+NC_knn4 <- knn2nb(
+  knn = knearneigh(x = NC_centroids,
+                   k = 4),
+  row.names = NC_UTM$NAME
+)
+# Now, let's make a plot. Remember, the nb2lines function is used to convert a
+
+
+# neighbor list object into an "sf-compatible" object which we can map.
+knn_lines <- nb2lines(
+  nb = NC_knn4,
+  coords = nc_coords
+)
+map_knn4 <- qtm(NC_UTM, title = "k = 4") +
+  qtm(knn_lines) +
+  qtm(NC_centroids)
+
+################ distances for K = 4 
+dist <- nbdists(nb = NC_knn4,
+                coords = nc_coords) %>%
+  # We'll use the unlist() function to convert our list of distances to a vector, which is easier to compare.
+unlist()
+summary(dist)
+
+############### max distance of K = 4 
+max_dist <- max(dist)
+
+############## nn based on the above distance
+NC_dnn <- dnearneigh(x = NC_centroids,
+  d1 = 0,
+  d2 = max_dist,
+  row.names = NC_UTM$NAME
+)
+NC_dnn_sf <- nb2lines(
+  NC_dnn, coords = nc_coords
+)
+map_maxd <- qtm(NC_UTM, title = "Max Dist") +
+  qtm(NC_dnn_sf) +
+  qtm(NC_centroids)
+
+map_knn4
+map_maxd
+
+```
+
+# Question 2 Continued:
+
+Creating functions to run convert our nn spatial objects to weights matrices and then run a Morans I test for `NC_UTM$MNEM2000` for each of those matrices.
+
+```{r}
+# previous code from module_8:
+rook_nb <- poly2nb(NC_UTM, queen = FALSE)
+NC_centroids <- st_centroid(NC_UTM)
+## Warning in st_centroid.sf(NC_UTM): st_centroid assumes attributes are constant over
+## geometries of x
+
+nc_coords <- NC_centroids$geometry
+
+nb_lines <- nb2lines(nb = rook_nb,
+                     coords = nc_coords)
+
+
+# New code: This is a function that converts our neighbor objects (vectors?, matrices?) into weights matrix
+convert_to_weights <- function(x) {
+  
+ value <- nb2listw(
+neighbours = x,
+  # The default style, "W", tells us that we're performing row standardization
+style = "W",
+# Don't worry about this option for now, but it'll be important to include # later.
+zero.policy = TRUE)
+  return(value)
+  }
+
+# the list of neighbor vectors/matrices (i'm not sure) we will run through the previous function
+to_convert <- list(queen_nb, rook_nb, NC_dnn, NC_knn4)
+
+# running the list through our convert_to_weights() function and storing as a new LIST `wij`
+wij <- lapply(to_convert, convert_to_weights)
+
+
+# Function that will run a Morans_I test based on the weights matrix. The data value remains constant as `NC_UTM$MNEM2000` 
+
+dans_moran_weights <- function(listw, variable_name) {
+ # storing test results as `value`
+  value <- moran.test(
+  x = NC_UTM$MNEM2000,
+  listw = listw,
+  zero.policy = TRUE,
+  alternative = "two.sided"
+)
+# storing p.values and Morans I values  
+ p.value <- value$p.value
+ Morans_I_Stat <- value$estimate[1]
+ 
+ # storing a title
+ title <- paste(variable_name)
+ 
+ # combining our title, pvalue, M_I value into a single list `combined`
+ combined <- list(title,value, p.value, Morans_I_Stat)
+ 
+ # our functions readout:
+  return(combined)
+}
+
+
+# Creating list for the names of our variables, which we then pass through our dans_moran_weights() function (in addition to our wij list from earlier). The read out of which we store as a final list, this essentially contains group items of each title, morans test, pvalue, and m_i value for each of the weight matrices we passed through. 
+
+variable_name <-  list("Queen", "Rook", "K = 4", "Max Dist")
+
+read_out <-mapply(dans_moran_weights, listw = wij, variable_name = variable_name, SIMPLIFY = FALSE)
+
+
+# in order to retrieve the pvalues and m_i values we need to extract them from our list, we do this by calling an anonymous function for the variable `result` and specify which item from our list we want. B/c of the order we chose in`combined` we can see that we want the third item for p.values and fourth item for M_I values. We of course store these in vector from using `sapply()` instead of lapply().
+p <- sapply(read_out, function(result) result[[3]])
+M_I <- sapply(read_out, function(result) result[[4]])
+
+# Then finally we create a data frame. I tried passing in `variable_name` and it was all wonky, even when I wrote code to try and convert it to a vector. (`as.vector()`) but it didnt like it, not sure why this is. 
+result_df <- data.frame(variable = c("Queen", "Rook", "K = 4", "Max Dist"), 
+                        p.value = p, 
+                        Morans_I = M_I)
+
+summary_table <- data.frame(t(result_df))
+result_df
+
+# this ish is still weird. idk why the transpose made it look like this but w/e
+summary_table
+
+```
+
+
+### Spatial Correlogram
+
+```{r}
+corr_gram <- sp.correlogram(
+neighbours = queen_nb,
+  var = NC_UTM$MNEM2000,
+  order = 4,
+  method = "I",
+style = "W",
+  zero.policy = TRUE
+)
+ plot(corr_gram)
+```
+
+# Questions 3
+**Create and provide the spatial correlogram plots for the MNEM2000 variable, using the Queen’s case, Rook’s case, 𝑘 = 4 nearest neighbors, and Maximum Distance spatial weights matrices. Make sure to label the plots! What is the general relationship between manufacturing and distance that can be derived from these plots?**
+
+
+```{r}
+dans_spatial_corr <- function(x, variable_name) {
+  corr_gram <- sp.correlogram(
+neighbours = x,
+  var = NC_UTM$MNEM2000,
+  order = 4,
+  method = "I",
+style = "W",
+  zero.policy = TRUE
+)
+  title <- paste(variable_name)
+ plot(corr_gram, main = title)
+ }
+
+variable_name <-  list("Queen", "Rook", "K = 4", "Max Dist")
+to_convert <- list(queen_nb, rook_nb, NC_dnn, NC_knn4)
+
+par(mfrow = c(2,2))
+
+read_out <- mapply(dans_spatial_corr, x = to_convert, variable_name = variable_name)
+
+read_out
+
+```
+<mark> 
+Across the board, as the lag value increases our morans I decreases. Meaning the further we are from any given target feature the less spatial autocorrelation we see. 
+
+
+### Local Moran's I
+
+Another consideration is that there is a specific set or region of spatial units that are contributing to a significant global Moran’s I value; for example, perhaps MNEM2000 is only autocorrelated in the Piedmont region, or in the peripheries, etc.
+To address these questions, we need a Local Indicator of Spatial Autocorrelation (LISA). The “local Moran’s I” is exactly such a statistic, and it returns a value for each area or point using our 𝑊𝑖𝑗 to define the neighborhood around each area or point.
+As shown below, the formula to calculate the local Moran’s I is different the the formula we saw earlier:
+𝐼𝑖 = 𝑧𝑖 ∑ 𝑊𝑖𝑗𝑧𝑗, where 𝑧𝑖 and 𝑧𝑗 represent the deviations from the mean. 𝑗
+Rather than summarize spatial autocorrelation into a single value, local Moran’s I assigns a measure of spatial autocorrelation to each spatial unit. It does this by calculating the average value of the variable, for example MNEM2000, among neighboring units, which is called the lag variable. Then, the value of each lag is compared to the value in the focal unit; if the value in the lag is similar to the value of the focal unit, we have positive local spatial autocorrelation.
+This process is repeated for every spatial unit in the data, resulting in new localized measures. Because we will have a measure for every unit, we can explore the resulting patterns using scatter plots and maps. We won’t have a single 𝑝-value either; instead, we’ll have a 𝑝-value for each ‘neighborhood’.
+
+```{r}
+####### Provided code
+local_moran_queen <- localmoran(
+x = NC_UTM$MNEM2000,
+  listw = queen_nb_w,
+  zero.policy = TRUE,
+  alternative = "two.sided"
+)
+head(local_moran_queen)
+
+moran.plot(
+  x = NC_UTM$MNEM2000,
+  listw = queen_nb_w,
+  labels = NC_UTM$NAME,
+  xlab = "Manufacturing Counts",
+  ylab = "Lag Manufacturing Counts"
+)
+
+
+```
+```{r}
+library(tidyverse)
+# This pulls out the quadrants from the results and assigns it to a vector
+quadr <- attr(local_moran_queen, "quadr")[, 2]
+NC_localmoran <- NC_UTM
+NC_localmoran$Quadrant <- quadr
+# The 5th column represents the p-value
+NC_localmoran$p.value <- local_moran_queen[, 5]
+sig_level <- 0.5
+NC_localmoran <- NC_localmoran %>%
+  mutate(
+    Quadrant_Sig = if_else(
+      p.value <= sig_level,
+      true = as.character(Quadrant),
+      false = "Insignificant"
+    ) %>%
+      as.factor()
+)
+
+lm_pal <-
+c(
+    "High-High" = "red",
+    "High-Low" = "#FF000080",
+    "Insignificant" = "gray90",
+    "Low-High" = "#0000FF80",
+    "Low-Low" = "blue"
+)
+tm_shape(NC_localmoran) +
+  tm_polygons(
+    col = "Quadrant_Sig",
+    palette = lm_pal,
+    border.col = "black") +
+  tm_layout(
+  main.title = paste0("LISA Cluster at Alpha = ", sig_level)
+)
+```
+
+# Questions 4. 
+**Adopt the code above to provide LISA maps for the MNEM1990 variable at an alpha of 0.1, 0.05, and 0.01 using the Queen’s case W. Provide a brief explanation of your findings about any local spatial autocorrelation at these more restrictive values of alpha.**
+
+```{r}
+# Provide code: Setting Queen's Case
+local_moran_queen <- localmoran(
+x = NC_UTM$MNEM1990,
+  listw = queen_nb_w,
+  zero.policy = TRUE,
+  alternative = "two.sided"
+)
+
+quadr <- attr(local_moran_queen, "quadr")[, 2]
+
+# Creating function to run local morans I (LISA) at various significance levels
+
+dans_LISA <-  function(x) {NC_localmoran <- NC_UTM
+NC_localmoran$Quadrant <- quadr
+# The 5th column represents the p-value
+NC_localmoran$p.value <- local_moran_queen[, 5]
+sig_level <- x
+NC_localmoran <- NC_localmoran %>%
+  mutate(
+    Quadrant_Sig = if_else(
+      p.value <= sig_level,
+      true = as.character(Quadrant),
+      false = "Insignificant"
+    ) %>%
+      as.factor()
+  )
+
+return(NC_localmoran)
+}
+
+a <- list(0.1, .05, .01)
+
+
+# this outputs a list of all tables for each significance level
+lisa_output <- lapply(a, dans_LISA)
+
+
+
+
+```
+
+```{r}
+# Filters LISA output tables to only return County Name and Quadrant_Sig
+
+LISA_table <- function(lisa_output) {
+  table <- lisa_output %>%
+  filter(Quadrant_Sig !=  "Insignificant") %>% 
+  group_by(Quadrant_Sig) %>%
+  select(County = NAME, 
+         Quadrant_Sig) %>%
+    st_drop_geometry()
+  return(table)
+}
+
+# A list of resulting tables 
+tables <- lapply(lisa_output, LISA_table)
+
+
+```
+
+```{r}
+# a function to plot
+dans_plot_LISA <- function(x, sig_level) {
+  
+  plot <- tm_shape(x) +
+  tm_polygons(
+    col = "Quadrant_Sig",
+    palette = lm_pal,
+    border.col = "black") +
+  tm_layout(
+  main.title = paste0("LISA Cluster at Alpha = ", sig_level)
+)
+  return(plot)
+}
+
+plots <- mapply(dans_plot_LISA, x = lisa_output, sig_level = a, SIMPLIFY = FALSE)
+
+# Despite becoming function obsessed I couldnt figure out how to get my read_out to order correctly with a function/lapply.. but boy did I try. Unsure as to why the group_by() effect for Quadrant_Sig is no longer displaying after using lapply(), run individually things are ordered properly but w/e. 
+plots[1]
+tables[1]
+plots[2]
+tables[2]
+plots[3]
+tables[3]
+
+```
+<mark>
+It seems like there are two sort've primary High-High clusters in the western Piedmont as well as a couple Low-Low and Low-High counties depending on the significance level. 
+
+
