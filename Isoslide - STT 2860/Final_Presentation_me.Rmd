@@ -1,0 +1,231 @@
+---
+title: "Final Presentation"
+author: "Dan Miller"
+date: "`r format(Sys.time(), '%B %d, %Y @ %I:%M %p')`"
+output:
+  ioslides_presentation: default
+  slidy_presentation: default
+---
+
+```{r global_options, include = FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE, # hide all the code
+  message = FALSE,
+  warning = FALSE,
+  comment = NA
+)
+```
+## Packages Used
+
+I used tidyverse for data manipulation and plotting.
+
+```{r, echo = TRUE}
+library(tidyverse)
+```
+
+I need plotly to create pie charts.
+
+```{r, echo = TRUE}
+library(plotly)
+```
+
+
+## Ice Cream Dataset
+
+I retrieved my dataset from [Kaggle](https://www.kaggle.com/datasets/tysonpo/ice-cream-dataset)
+
+**Variables in the Dataset:**
+
+* `brand`: Ben & Jerry's, Haagen Dazs, Talenti, Breyers
+* `key`: Unique code for each ice cream product
+* `name`: The name of the ice cream product
+* `description`: Official description from respective company
+* `rating`: Based on aggregated google reviews with a max score of 5  
+* `rate_count`: Total occurrence of reviews (rating) on google
+* `quality` : Based on subjective `rating` ranges. Great >= 4.5, Decent >= 3.75, Average >= 3
+              Not Good >= 2.2 and Bad < 2.2
+
+## 
+```{r}
+data <- read.csv("~/Rstudio Projects/Git Repo's/Project 3/Final Project/products (1).csv")
+```
+
+
+```{r}
+data_edit <- data %>%
+  select(!c(subhead, description)) %>%
+  mutate(brand = case_when(brand == "bj"~"Ben & Jerry's", brand == "hd"~"Haagen Dazs", brand == "talenti"~"Talenti", brand == "breyers"~"Breyers")) %>%
+  mutate(quality = rating, quality = case_when(quality >= 4.5~'Great', quality >= 3.75~"Decent", quality >= 3~"Average", quality >= 2.2~"Not Good", TRUE~"Bad")) %>%
+  mutate(quality = as.factor(quality)) %>% 
+  select(brand, flavor = name, rating, quality, ingredients) %>%
+  arrange(quality)
+```
+
+
+
+```{r, fig.align = "center"}
+data_edit %>%
+ ggplot(aes(x = brand)) + 
+  geom_bar(aes(fill = brand), show.legend = FALSE, alpha = 0.75) +
+  labs(title = "Ice Cream Number of Flavors by Brand", y = "Count", x = NULL) +
+  scale_y_continuous(breaks = seq(0, 100, by = 5)) +
+  theme(panel.background = element_blank(),
+        panel.grid.major.y = element_line(color = "grey", linewidth = .35, linetype = 1),
+        plot.title = element_text(hjust = 0.5, size = 22))
+  
+```
+
+##
+```{r , fig.align = "center", fig.width = 7.5, fig}
+data_edit %>% 
+  ggplot(aes(x = brand, fill = factor(quality, levels=c("Great", "Decent", "Average", "Not Good", "Bad")))) +
+  geom_bar(position = "stack", alpha = 0.75) + 
+  labs(title = "Quality Comparison", y = "Count", x = "Brands", caption = "* based on google reviews (max 5). Great >= 4.5, Decent >= 3.75, Average >= 3, Not Good >= 2.2, Bad < 2.2 ") +
+  scale_fill_discrete(name = "Quality") +
+  scale_y_continuous(breaks = seq(0, 100, by = 5)) +
+  theme(panel.background = element_blank(),
+        panel.grid.major.y = element_line(color = "grey", size = .35, linetype = 1),
+        panel.grid.minor.y = element_blank(),
+        plot.title = element_text(hjust = 0.5, size = 22))
+```
+
+##
+```{r, fig.align = "center"}
+colors <- c("#66c2a5","#fc8d62","#8da0cb","#e78ac3","#a6d854")
+
+pie_charts <- data_edit %>%
+  group_by(quality) %>%
+  summarize(counts = n(), percentage = n()/nrow(data_edit))
+
+pie <- ggplot(data = pie_charts, aes(x = "", y = percentage, fill = factor(quality, levels = c("Great", "Decent", "Average", "Not Good", "Bad")))) +
+  geom_col(color = "black") +
+  coord_polar("y", start=0) +
+  geom_text(aes(label = paste0(round(percentage*100), "%")), position = position_stack(vjust = 0.5)) +
+  theme(panel.background = element_blank(), 
+        axis.line = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        plot.title = element_text(hjust = 0.5, size = 22),
+        legend.title = element_blank()) +
+  labs(y = element_blank()) +
+  ggtitle("Average Quality Distribution") +
+  scale_fill_manual(values = colors)
+pie
+
+```
+
+
+##
+```{r, fig.align = "center"}
+bj_pie_charts <- data_edit %>%
+  filter(brand == "Ben & Jerry's")
+bj_pie <- bj_pie_charts %>%
+  group_by(quality) %>%
+  summarize(counts = n(), percentage = n()/nrow(bj_pie_charts))
+
+pie_2 <- ggplot(data = bj_pie, aes(x = "", y = percentage, fill =  factor(quality, levels = c("Great", "Decent", "Average", "Not Good", "Bad")))) +
+  geom_col(color = "black") +
+  coord_polar("y", start=0) +
+  geom_text(aes(label = paste0(round(percentage*100), "%")), position = position_stack(vjust = 0.5)) +
+  theme(panel.background = element_blank(), 
+        axis.line = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+       plot.title = element_text(hjust = 0.5, size = 22),
+        legend.title = element_blank()) +
+  ggtitle("Ben & Jerry's") +
+  labs(y = element_blank()) +
+  scale_fill_manual(values = colors)
+pie_2
+
+```
+
+
+
+
+##
+```{r, fig.align = "center"}
+hd_pie_charts <- data_edit %>%
+  filter(brand == "Haagen Dazs")
+hd_pie <- hd_pie_charts %>%
+  group_by(quality) %>%
+  summarize(counts = n(), percentage = n()/nrow(hd_pie_charts))
+
+pie_3 <- ggplot(data = hd_pie, aes(x = "", y = percentage, fill =  factor(quality, levels = c("Great", "Decent", "Average", "Not Good", "Bad")))) +
+  geom_col(color = "black") +
+  coord_polar("y", start=0) +
+  geom_text(aes(label = paste0(round(percentage*100), "%")), position = position_stack(vjust = 0.5)) +
+  theme(panel.background = element_blank(), 
+        axis.line = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        plot.title = element_text(hjust = 0.5, size = 22),
+        legend.title = element_blank()) +
+  ggtitle("Haagen Dazs") +
+  labs(y = element_blank()) +
+  scale_fill_manual(values = colors)
+pie_3
+
+```
+
+
+
+
+
+##
+```{r, fig.align = "center"}
+br_pie_charts <- data_edit %>%
+  filter(brand == "Breyers")
+br_pie <- br_pie_charts %>%
+  group_by(quality) %>%
+  summarize(counts = n(), percentage = n()/nrow(br_pie_charts))
+
+pie_4 <- ggplot(data = br_pie, aes(x = "", y = percentage, fill =  factor(quality, levels = c("Great", "Decent", "Average", "Not Good", "Bad")))) +
+  geom_col(color = "black") +
+  coord_polar("y", start=0) +
+  geom_text(aes(label = paste0(round(percentage*100), "%")), position = position_stack(vjust = 0.5)) +
+  theme(panel.background = element_blank(), 
+        axis.line = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        plot.title = element_text(hjust = 0.5, size = 22),
+        legend.title = element_blank()) +
+  ggtitle("Breyers") +
+  labs(y = element_blank()) +
+  scale_fill_manual(values = colors)
+pie_4
+
+```
+
+
+
+##
+ 
+```{r, fig.align = "center"}
+t_pie_charts <- data_edit %>%
+  filter(brand == "Talenti")
+t_pie <- t_pie_charts %>%
+  group_by(quality) %>%
+  summarize(counts = n(), percentage = n()/nrow(t_pie_charts))
+
+pie_5 <- ggplot(data = t_pie, aes(x = "", y = percentage, fill =  factor(quality, levels = c("Great", "Decent", "Average", "Not Good", "Bad")))) +
+  geom_col(color = "black") +
+  coord_polar("y", start=0) +
+  geom_text(aes(label = paste0(round(percentage*100), "%")), position = position_stack(vjust = 0.5)) +
+  theme(panel.background = element_blank(), 
+        axis.line = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        plot.title = element_text(hjust = 0.5, size = 22),
+        legend.title = element_blank()) +
+  ggtitle("Talenti") +
+  labs(y = element_blank()) +
+  scale_fill_manual(values = colors)
+pie_5
+
+```
+
+
+##
+* This content was not sponsored
+
