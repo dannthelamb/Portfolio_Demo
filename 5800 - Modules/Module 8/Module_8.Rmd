@@ -1,0 +1,297 @@
+---
+title: "Module 8"
+author: "Dan Miller"
+date: "2023-10-25"
+output: html_document
+---
+
+```{r}
+library(sf)
+library(spdep)
+NC <- read_sf("NC_REGION/NC_REGION.shp")
+```
+
+
+```{r}
+st_crs("EPSG:26917")
+class(st_crs("EPSG:26917"))
+```
+
+
+```{r}
+# The 'crs' argument works best when we give it an object of class 'crs', such
+# as what's given by the st_crs() function
+NC_UTM <- st_transform(NC, crs = st_crs("EPSG:26917"))
+
+```
+
+```{r}
+library(tmap)
+# qtm() can be used to generate a "quick thematic map", which is great for
+# visualizing our data. Check it out with ?tmap::qtm()
+t1 <- qtm(NC)
+t2 <- qtm(NC_UTM)
+tmap_arrange(t1, t2)
+```
+
+```{r}
+queen_nb <- poly2nb(NC_UTM, queen = TRUE)
+NC_centroids <- st_centroid(NC_UTM)
+## Warning in st_centroid.sf(NC_UTM): st_centroid assumes attributes are constant over
+## geometries of x
+
+nc_coords <- NC_centroids$geometry
+
+nb_lines <- nb2lines(nb = queen_nb,
+                     coords = nc_coords)
+
+# Mapping the state
+tm_shape(NC_UTM) +
+  tm_borders() +
+
+# Drawing neighbor 2 neighbor lines based on our predefined object: nb_lines  
+tm_shape(nb_lines) + 
+  tm_lines() +
+
+# Plotting dots on NC centroids    
+tm_shape(NC_centroids) + 
+  tm_dots(size = 0.125)
+```
+
+
+```{r}
+summary(queen_nb)
+```
+
+
+```{r}
+queen_names <- NC_UTM %>%
+  tibble::column_to_rownames("NAME") %>%
+  st_as_sf() %>%
+  poly2nb(pl = .,
+          queen = TRUE)
+summary(queen_names)
+```
+```{r}
+# We'll use the county name as the row names. Unlike in poly2nb, the
+row.names
+# argument actually seems to work :)
+NC_knn1 <- knn2nb(
+  knn = knearneigh(x = NC_centroids,
+                   k = 1),
+  row.names = NC_UTM$NAME
+)
+# Now, let's make a plot. Remember, the nb2lines function is used to convert a
+# neighbor list object into an "sf-compatible" object which we can map.
+knn_lines <- nb2lines(
+  nb = NC_knn1,
+  coords = nc_coords
+)
+qtm(NC_UTM, title = "k = 1") +
+  qtm(knn_lines) +
+  qtm(NC_centroids)
+```
+
+
+
+
+### Question 1
+
+**Use the poly2nb() function to create a Rook’s case neighbor construct by changing queen = TRUE to queen = FALSE. Call this new object rook_nb in your code. Plot a map using tmap that shows the counties, the connections as lines, and the county centroids as points. Include a title (hint: use main.title if you want to have the title outside the map frame).**
+
+```{r}
+rook_nb <- poly2nb(NC_UTM, queen = FALSE)
+NC_centroids <- st_centroid(NC_UTM)
+## Warning in st_centroid.sf(NC_UTM): st_centroid assumes attributes are constant over
+## geometries of x
+
+nc_coords <- NC_centroids$geometry
+
+nb_lines <- nb2lines(nb = rook_nb,
+                     coords = nc_coords)
+
+# Mapping the state
+tm_shape(NC_UTM) +
+  tm_borders() +
+
+# Drawing neighbor 2 neighbor lines based on our predefined object: `nb_lines`  
+tm_shape(nb_lines) + 
+  tm_lines() +
+
+# Plotting dots on NC centroids    
+tm_shape(NC_centroids) + 
+  tm_dots(size = 0.125) +
+  tm_layout(main.title = "Rook's Case")
+```
+
+### Modified Summaries
+
+```{r}
+queen_names <- NC_UTM %>%
+  tibble::column_to_rownames("NAME") %>%
+  st_as_sf() %>%
+  poly2nb(pl = .,
+          queen = TRUE)
+rook_names <- NC_UTM %>%
+  tibble::column_to_rownames("NAME") %>%
+  st_as_sf() %>%
+  poly2nb(pl = .,
+          queen = FALSE)
+
+cat("### Queen Names\n")
+summary(queen_names)
+cat("\n\n")
+cat("### Rook Names\n")
+summary(rook_names)
+```
+### Question 2
+
+**Compare the distribution of links between the Queen’s case and Rook’s case. What changed when we restricted the neighbor criterion by using a Rook’s case? Using the code above, what are names of the ‘least connected regions’ generated with a Rook’s case neighborhood? Provide the code used to get your results.**
+
+<mark> 
+As you can see from the above read outs there are a number of differences between the queen and rook case connections. The Queens case has 490 to the Rooks case 462 links and the entire distribution of the Rook's case links have shifted to the left. Despite this, there is no differentiation for the least connected regions which include: Currituck, Chowan, Tyrrell, Dare, Polk, Pamlico, Clay, & New Hanover for both. 
+
+
+### Nearest Neighbor
+
+To get around this type of problem, where some counties have very few connections, we use a different method called k-nearest neighbor. This method specifies the number of connections for each spatial unit; for instance, when 𝑘 = 1, each spatial unit will have exactly one neighbor. The choice for which unit becomes the neighbor is based on distance between points or centroids; the unit that is “closest” is classified as the neighbor.
+Because we’re using a distance-based criteria, it’s good that we’ve already projected our shapefile to a crs with linear units. Let’s demonstrate a 𝑘 = 1 setup using the knn2nb() (k-nearest neighbor to neighbor-list) function:
+
+```{r}
+# We'll use the county name as the row names. Unlike in poly2nb, the
+row.names
+# argument actually seems to work :)
+NC_knn1 <- knn2nb(
+  knn = knearneigh(x = NC_centroids,
+                   k = 1),
+  row.names = NC_UTM$NAME
+)
+# Now, let's make a plot. Remember, the nb2lines function is used to convert a
+# neighbor list object into an "sf-compatible" object which we can map.
+knn_lines <- nb2lines(
+  nb = NC_knn1,
+  coords = nc_coords
+)
+qtm(NC_UTM, title = "k = 1") +
+  qtm(knn_lines) +
+  qtm(NC_centroids)
+
+```
+
+### Question 3 
+**3. In addition to 𝑘 = 1, use knn2nb() to create neighbor constructs for 𝑘 = 2, 𝑘 = 4, and 𝑘 = 6. Plot the connections for each using tmap, including the label. Provide your R code and plots for the neighbor constructs. Use tmap_arrange() to place all 4 plots in a single “image”. - Try and do this with some R programming; rather than just generating each construct one-at-a-time, try using things like for loops, lapply, purrr::map functions, etc.**
+
+
+```{r}
+# Copy and paste from above, we want to include all steps executed as part of our function 
+create_knn_plot <- function(k) {
+  # Create knn2nb object
+  knn_nb <- knn2nb(
+    
+    # instead of specifying a precise value for k, set the variable equal to itself because it is the independent variable in our function. 
+    knn = knearneigh(x = NC_centroids, k = k),
+    row.names = NC_UTM$NAME
+  )
+
+  # Convert nb object to lines
+  knn_lines <- nb2lines(nb = knn_nb, coords = nc_coords)
+
+  # Plot the data
+  qtm(NC_UTM, title = paste("k =", k)) +
+    qtm(knn_lines) +
+    qtm(NC_centroids)
+}
+
+# Create list of values for k, instead of just calling list() and inputing individual values I chose to use as.list() wrapped around seq() for easier toggling of values for fun, either way a list is necessary for the lapply() function in the next step
+
+k_values <- as.list(seq(from = 2, to = 6, by = 2))  
+
+# 
+lapply(k_values, create_knn_plot)
+```
+
+
+### Distance-Based Approach
+
+
+```{r}
+dist <- nbdists(nb = NC_knn1,
+                coords = nc_coords) %>%
+  # We'll use the unlist() function to convert our list of distances to a vector, which is easier to compare.
+unlist()
+summary(dist)
+```
+
+We can see that the maximum distance (in meters) between any of the two counties is 41,087. If we set this as our distance band, we can be sure that every county will have at least one neighbor.
+Now, we can use dnearneigh() to create a distance-based neighbor construct:
+
+```{r}
+max_dist <- max(dist)
+NC_dnn <- dnearneigh(x = NC_centroids,
+  d1 = 0,
+  d2 = max_dist,
+  row.names = NC_UTM$NAME
+)
+NC_dnn_sf <- nb2lines(
+  NC_dnn, coords = nc_coords
+)
+qtm(NC_UTM, title = "100%") + qtm(NC_dnn_sf)
+```
+
+### Question 4
+**4. a. In addition to our “100%” distance threshold (the code above), create plots for: - 50% of the maximum distance, - 125% of the maximum distance, - 150% of the maximum distance. b. Use tmap to do this, and arrange all plots in a single image using tmap_arrange(). Be sure to label each plot. c. What happened to the number of connections from the 75% to the 125% construct?**
+
+
+```{r}
+
+#Original vector/ object `max_dist`
+max_dist <- max(dist)
+
+
+### LIST `percent_x` created based on percentages I want to use, originally set to 1.5 but changed to 1.75 so final output was balanced looking.. (?)
+percent_x <- as.list(seq(from = 0.5, to = 1.75, by = 0.25))
+
+# FUNCTION `distance_calulator()` made to multiply `percent` and `max_dist`.
+distance_calculator <- function(percent, max_dist) {
+  # Object `value` created:
+  value <- percent * max_dist
+  # Return Object `value`:
+  return(value)
+
+}
+
+# NEW LIST `adjusted_max_distances` made from running our first LIST `percent_x` iteratively through our FUNCTION `distance_calculator()` using `lapply()`, and being sure to set `max_dist` our function variable to `max_dist` our original vector.
+adjusted_max_distances <- lapply(percent_x, distance_calculator, max_dist = max_dist)
+
+# NEW FUNCTION `generate_nearest_neighbor_map()` which creates three objects and then uses those objects to return maps - relies on the input of `d2` our main independent variable which defines the max distance constraint for our neighborhoods, and `percent` which is used to make the titles.
+generate_nearest_neighbor_map <- function(d2, percent) {
+  # Object 1: the neighborhoods 
+  NC_dnn <- dnearneigh(x = NC_centroids, 
+                       d1 = 0, 
+                       d2 = d2, 
+                       row.names = NC_UTM$NAME)
+  
+  # Object 2: the links/lines connecting neighborhood features
+  NC_dnn_lines <- nb2lines(NC_dnn, coords = nc_coords)
+  
+  # Object 3: the title
+  title <- paste0(percent * 100, "%")
+  
+  # Our function output: Important to remember to use NC_UTM to show the map of NC, not just the lines. 
+  return(qtm(NC_UTM, title = title) + qtm(NC_dnn_lines))
+}
+
+
+####################
+
+
+# Using `mapply()` because we want to run 2 LIST's through the 'generate_nearest_neighbor_map()` FUNCTION at the same time. We set `d2` = `adjusted_max_distances` LIST, and `percent` = `percent_x` LIST.
+maps <- mapply(generate_nearest_neighbor_map, d2 = adjusted_max_distances, percent = percent_x, SIMPLIFY = FALSE)
+
+# Finally we print the maps on a single page using `tmap_arrange()`
+library(tmap)
+tmap_arrange(maps)
+
+```
+
+As is evident from the plots, the number of linkages greatly increases as we increase our % of max distance. 

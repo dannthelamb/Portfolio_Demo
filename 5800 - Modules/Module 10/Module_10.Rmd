@@ -1,0 +1,227 @@
+---
+title: "Module 10"
+author: "Dan Miller"
+date: "2023-11-09"
+output: html_document
+---
+
+```{r}
+library(spdep)
+library(sf)
+#install.packages("tidyverse")
+library(tidyverse)
+#install.packages("tmap")
+library(tmap)
+#install.packages("spatialreg")
+library(spatialreg)
+```
+
+```{r}
+data <- read_sf("data/2004_Election_Counties.shp")
+```
+
+```{r}
+data
+```
+
+### Creating Weights Matrix 
+
+
+
+```{r}
+
+W_cont_el <- poly2nb(data, queen=T)
+W_cont_el_mat <- nb2listw(W_cont_el, style="W", zero.policy=TRUE)
+
+## Global Autocorrelation Tests: Moran's I
+moran.test(data$Bush_pct, listw=W_cont_el_mat, zero.policy=T)
+## Global Autocorrelation Tests: Geary's C
+geary.test(data$Bush_pct, listw=W_cont_el_mat, zero.policy=T)
+## Global Autocorrelation Tests: Moran's I
+moran.test(data$pcincome, listw=W_cont_el_mat, zero.policy=T)
+## Global Autocorrelation Tests: Geary's C
+geary.test(data$pcincome, listw=W_cont_el_mat, zero.policy=T)
+```
+
+# Questions:
+
+### Question 1
+
+**Use lm() to estimate Bush_pct ~ pcincome using ordinary linear least square (OLS). Plot the residuals and test for spatial autocorrelation. Provide an example of your map and an output of of your spatial autocorrelation results. Hint your results should look similar to the plot on the right.**
+
+
+
+```{r}
+palette <- c("#d7191c","#fdae61","#ffffbf","#a6d96a","#1a9641")
+model <- lm(Bush_pct ~ pcincome, data = data)
+data$residuals <- model$residuals
+
+data$residuals_range <- cut(
+  data$residuals,
+  breaks = c(-50, -25, -5, 5, 25, 50),
+  labels = c("(-50:-25)", "(-25:-5)", "(-5:5)", "(5:25)", "(25:50)"),
+  include.lowest = TRUE
+)
+
+
+
+tm_shape(data, unit = "mi") +
+  tm_polygons(
+    
+    # Data variable being filled for chloropleth
+    col = "residuals_range",
+    
+    # Title / Color palette
+    title = "Residuals",
+    palette = palette,
+    
+    # Number of classes
+    n = 5,
+    
+    # Method of creating classes (quantile generally preferred)
+    style = "quantile") +
+  
+  
+  # Adding Scale Bar, Default position is "right","bottom"
+   tm_scale_bar(position = c("center", "bottom")) +
+  
+  # Adding compass rose
+  tm_compass(position = c("right", "bottom"), type = "rose", size = 2) +
+  
+  # Final formatting adjustments
+  tm_layout(legend.outside = FALSE,
+          title = "US Residuals",
+          inner.margins = .125,
+          legend.frame = TRUE
+          ) 
+moran.test(model$residuals,  listw=W_cont_el_mat, zero.policy=T )
+```
+
+### Question 2
+
+**2.) Estimate the same relationship as above using the spatial lag model instead. The lag model function is in the spdep library and is called lagsarlm. Provide the results of your regression.**
+
+```{r}
+
+model_lag <- lagsarlm(Bush_pct ~ pcincome, data = data, listw = W_cont_el_mat, zero.policy = TRUE)
+model_lag
+```
+### Mapping Lag Residuals 
+
+```{r}
+data$lag_residuals<- model_lag$residuals
+data$lag_residuals_range <- cut(
+  data$lag_residuals,
+  breaks = c(-50, -25, -5, 5, 25, 50),
+  labels = c("(-50:-25)", "(-25:-5)", "(-5:5)", "(5:25)", "(25:50)"),
+  include.lowest = TRUE
+)
+
+
+
+tm_shape(data, unit = "mi") +
+  tm_polygons(
+    
+    # Data variable being filled for chloropleth
+    col = "lag_residuals_range",
+    
+    # Title / Color palette
+    title = "Lag Residuals",
+    palette = palette,
+    
+    # Number of classes
+    n = 5,
+    
+    # Method of creating classes (quantile generally preferred)
+    style = "quantile") +
+  
+  # Adding Scale Bar, Default position is "right","bottom"
+   tm_scale_bar(position = c("center", "bottom")) +
+  
+  # Adding compass rose
+  tm_compass(position = c("right", "bottom"), type = "rose", size = 2) +
+  
+  # Final formatting adjustments
+  tm_layout(legend.outside = FALSE,
+          title = "US Lag Residuals",
+          inner.margins = .125,
+          legend.frame = TRUE
+          ) 
+```
+### Question 3
+
+**Perform a Moran’s I test on the residuals of the lag model and report your results. Is there evidence of remaining spatial autocorrelation in the residuals?**
+
+```{r}
+moran.test(model_lag$residuals, listw = W_cont_el_mat, zero.policy = TRUE)
+```
+
+<mark>
+After performing the lag test our resulting Morans I test shows a Moran's I statistic very close to zero and a p-value higher than all commonly used significance levels, thus we fail to reject our null-hypothesis and conclude there is no significant spatial autocorrelation. 
+
+
+### Question 4
+
+**This time, estimate the same function using the error model (errorsarlm). Provide the results of the error model and explain any differences in the coefficient variable from the lag to the error model. Also perform a Moran’s I test on the residuals of the error model and provide those results.**
+
+```{r}
+model_err <- errorsarlm(Bush_pct ~ pcincome, data = data, listw = W_cont_el_mat, zero.policy = TRUE)
+model_err
+```
+```{r}
+moran.test(model_err$residuals,  listw = W_cont_el_mat, zero.policy = TRUE)
+```
+
+```{r}
+data$err_residuals <- model_err$residuals
+data$err_residuals_range <- cut(
+  data$err_residuals,
+  breaks = c(-50, -25, -5, 5, 25, 50),
+  labels = c("(-50:-25)", "(-25:-5)", "(-5:5)", "(5:25)", "(25:50)"),
+  include.lowest = TRUE
+)
+
+
+
+tm_shape(data, unit = "mi") +
+  tm_polygons(
+    
+    # Data variable being filled for chloropleth
+    col = "err_residuals_range",
+    
+    # Title / Color palette
+    title = "Error Residuals",
+    palette = palette,
+    
+    # Number of classes
+    n = 5,
+    
+    # Method of creating classes (quantile generally preferred)
+    style = "quantile") +
+  
+  # Adding Scale Bar, Default position is "right","bottom"
+   tm_scale_bar(position = c("center", "bottom")) +
+  
+  # Adding compass rose
+  tm_compass(position = c("right", "bottom"), type = "rose", size = 2) +
+  
+  # Final formatting adjustments
+  tm_layout(legend.outside = FALSE,
+          title = "US Error Residuals",
+          inner.margins = .125,
+          legend.frame = TRUE
+          ) 
+```
+
+<mark>
+So the moran's i test for both the lag and error residuals returned very similair values overall (almost identical even). HOwever I do not know/ understand what the differences mean in the coeffecients section. For our error model we recieved the followed readout: Coefficients:
+      lambda   (Intercept)     pcincome 
+7.619651e-01  5.834719e+01   8.021757e-05 
+
+and for our lag model:
+
+  rho         (Intercept)     pcincome 
+7.510418e-01  1.407314e+01   5.460041e-05 
+
+
+ultimately these values seem quite similair to me accroass the board but I dont know that I understand what these values tell us about our data. 
